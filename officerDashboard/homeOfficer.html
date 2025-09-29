@@ -359,7 +359,10 @@
 
                 // Update the counters based on the fetched data
                 totalViolationsCount.textContent = violations.length;
-                unpaidFinesCount.textContent = violations.filter(v => v.status === "Issued").length;
+                
+                // --- FIX: Count all violations where the status is NOT "Paid" to get the unpaid count ---
+                unpaidFinesCount.textContent = violations.filter(v => v.status !== "Paid").length;
+                
                 paidFinesCount.textContent = violations.filter(v => v.status === "Paid").length;
 
             } catch (error) {
@@ -430,3 +433,4 @@
 </body>
 
 </html>
+

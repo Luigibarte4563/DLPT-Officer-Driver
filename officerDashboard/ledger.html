@@ -186,7 +186,7 @@
                                     Type</th>
                                 <th
                                     class="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Amount (ETH)</th>
+                                    Amount (PHP)</th>
                                 <th
                                     class="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     Date</th>
@@ -346,6 +346,8 @@
 
                 fullLedgerTableBody.innerHTML = sortedViolations.map(v => {
                     const statusColor = v.status === "Paid" ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                    // --- CHANGE: Prepending Peso symbol (₱) and keeping the formatEther logic for decimal display ---
+                    const amountInCurrency = Number(ethers.formatEther(v.amount)).toFixed(2);
                     return `
                         <tr class="hover:bg-gray-50">
                             <!-- REMOVED VIOLATION ID COLUMN (v.violationId) -->
@@ -353,7 +355,7 @@
                             <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500" title="${v.violator}">${formatAddress(v.violator)}</td>
                             <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500" title="${v.officer}">${formatAddress(v.officer)}</td>
                             <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${v.violationType}</td>
-                            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">${Number(ethers.formatEther(v.amount)).toFixed(2)}</td>
+                            <td class="px-2 py-2 whitespace-nowrap text-sm text-gray-500">₱${amountInCurrency}</td>
                             <td class="px-2 py-2 whitespace-nowrap text-xs text-gray-500">${formatTimestamp(v.timestamp)}</td>
                             <td class="px-2 py-2 whitespace-nowrap text-sm">
                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor}">
@@ -417,3 +419,4 @@
 </body>
 
 </html>
+

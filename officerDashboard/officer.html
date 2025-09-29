@@ -106,10 +106,10 @@
                         <span class="text-[10px] md:text-sm mt-1 md:mt-0 nav-text">Home</span>
                     </a>
                 </li>
-                <!-- 2. Officer (Issue) -->
+                <!-- 2. Officer (Issue) - Active Page -->
                 <li>
                     <a href="officer.html"
-                        class="nav-link flex flex-col md:flex-row items-center justify-center md:justify-start p-2 md:p-3 text-xs md:text-sm text-gray-700 rounded-lg transition hover:bg-indigo-50 hover:text-indigo-600 w-full">
+                        class="nav-link active flex flex-col md:flex-row items-center justify-center md:justify-start p-2 md:p-3 text-xs md:text-sm text-gray-700 rounded-lg transition hover:bg-indigo-50 hover:text-indigo-600 w-full">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:mr-3" fill="none" viewBox="0 0 24 24"
                             stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round"
@@ -118,10 +118,10 @@
                         <span class="text-[10px] md:text-sm mt-1 md:mt-0 nav-text">Officer (Issue)</span>
                     </a>
                 </li>
-                <!-- 3. Cashier (Pay Fine) - Active Page -->
+                <!-- 3. Cashier (Pay Fine) -->
                 <li>
                     <a href="pay_fine.html"
-                        class="nav-link active flex flex-col md:flex-row items-center justify-center md:justify-start p-2 md:p-3 text-xs md:text-sm text-gray-700 rounded-lg transition hover:bg-indigo-50 hover:text-indigo-600 w-full">
+                        class="nav-link flex flex-col md:flex-row items-center justify-center md:justify-start p-2 md:p-3 text-xs md:text-sm text-gray-700 rounded-lg transition hover:bg-indigo-50 hover:text-indigo-600 w-full">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 md:mr-3" fill="none" viewBox="0 0 24 24"
                             stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round"
@@ -196,10 +196,10 @@
                         </div>
                         <div>
                             <label for="violationAmount" class="block text-sm font-medium text-gray-700">Fine Amount (in
-                                ETH)</label>
+                                PHP)</label>
                             <!-- NOTE: 'name' attribute is crucial for FormData() -->
                             <input type="number" step="1" min="1" id="violationAmount" name="violationAmount" required
-                                value="1000"
+                                value="150"
                                 class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2 border">
                         </div>
                         <div>
@@ -234,7 +234,7 @@
                                         Violator</th>
                                     <th
                                         class="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        Amount (ETH)</th>
+                                        Amount (₱)</th>
                                     <th
                                         class="px-2 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         Location</th>
@@ -276,6 +276,7 @@
 
     <script type="module">
         // ----------------- CONFIG (Keep this consistent across all files) -----------------
+        const SEPOLIA_CHAIN_ID = 11155111n; // Sepolia Chain ID as BigInt
         const RPC_URL = "https://sepolia.infura.io/v3/927cc9e253b042d9b11fe17422a44763"; // Sepolia RPC
         const CONTRACT_ADDRESS = "0x12e17c73ff8219ccd3265a4b66d83221e9991093"; // Your deployed Sepolia contract
         const ABI = [
@@ -362,12 +363,58 @@
             ` : text;
         }
 
+
+        /**
+         * Checks the connected network and attempts to switch to Sepolia if necessary.
+         * @param {ethers.BrowserProvider} currentProvider - The provider connected to window.ethereum.
+         * @returns {Promise<boolean>} - True if the network is correct (or was successfully switched), false otherwise.
+         */
+        async function checkAndSwitchNetwork(currentProvider) {
+            try {
+                const network = await currentProvider.getNetwork();
+                
+                if (network.chainId !== SEPOLIA_CHAIN_ID) {
+                    modalText.textContent = "Wrong network detected. Requesting switch to Sepolia...";
+                    displayMessage(`Switching wallet network to Sepolia (Chain ID: ${Number(SEPOLIA_CHAIN_ID)})...`, true);
+
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: ethers.toQuantity(SEPOLIA_CHAIN_ID) }], // Ethers v6 requires hex string for chainId
+                    });
+
+                    // Wait a moment for the wallet to fully switch networks
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    const newNetwork = await currentProvider.getNetwork();
+                    if (newNetwork.chainId === SEPOLIA_CHAIN_ID) {
+                        displayMessage("Successfully switched to Sepolia Network.", false);
+                        return true;
+                    } else {
+                        throw new Error("Could not switch to Sepolia network.");
+                    }
+                }
+                return true;
+            } catch (switchError) {
+                // This error typically means the user rejected the switch
+                console.error("Network check/switch failed:", switchError);
+                if (switchError.code === 4902) {
+                    displayMessage("Sepolia not added to wallet. Please add it manually.", true);
+                } else if (switchError.code === 4001) {
+                    displayMessage("Network switch rejected by user. Please connect to Sepolia manually to proceed.", true);
+                } else {
+                    displayMessage("Failed to switch network. Please check your wallet's current network.", true);
+                }
+                return false;
+            }
+        }
+
+
         // --- Core Functions ---
 
         // --- Wallet Connection Logic (Essential for all files) ---
         async function connectContract() {
             if (!window.ethereum) {
-                displayMessage("Please install MetaMask!", true);
+                displayMessage("Please install an EVM wallet (like MetaMask or Viction)!", true);
                 return;
             }
 
@@ -382,17 +429,26 @@
                 }
 
                 officerWallet = accounts[0];
+                
+                // --- FIX: Check and switch network ---
+                const isNetworkCorrect = await checkAndSwitchNetwork(provider);
+                if (!isNetworkCorrect) {
+                    // If the network is incorrect and the user didn't switch, stop here.
+                    updateUIForDisconnectedState();
+                    return;
+                }
+                // --- END FIX ---
+                
                 sessionStorage.setItem("walletAddress", officerWallet);
-
                 signer = await provider.getSigner();
                 contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);
 
                 updateUIForConnectedState(officerWallet);
-                displayMessage("Wallet connected!");
+                displayMessage("Wallet connected to Sepolia!");
                 await loadHistory();
             } catch (err) {
                 console.error(err);
-                displayMessage(err.code === 4001 ? "Connection rejected by user." : "Wallet connection failed.", true);
+                displayMessage(err.code === 4001 ? "Connection rejected by user." : "Wallet connection failed. Check console.", true);
                 updateUIForDisconnectedState();
             } finally {
                 walletConnectModal.classList.add("hidden");
@@ -456,7 +512,7 @@
             e.preventDefault();
 
             if (!contract) {
-                displayMessage("Wallet not connected. Please connect your wallet first.", true);
+                displayMessage("Wallet not connected or not on the correct network (Sepolia).", true);
                 return;
             }
 
@@ -515,69 +571,115 @@
             } catch (error) {
                 console.error("Issuing violation failed:", error); // <-- This is where the error is logged
 
-                let userMessage = "Transaction Failed: Check the console for details.";
-
+                let userMessage = "Violation issue failed. ";
                 if (error.code === 4001) {
-                    userMessage = "Transaction Rejected: You declined the transaction in your wallet (MetaMask).";
-                } else if (error.reason && typeof error.reason === 'string') {
-                    // Ethers v6 often provides a 'reason' for revert errors
-                    userMessage = `Transaction Failed. Reason: **${error.reason}**. (Contract Revert)`;
-                } else if (error.message && (error.message.includes("-32603") || error.message.includes("Internal JSON-RPC error"))) {
-                    // Specific handling for the error you reported (likely a contract revert due to permissions)
-                    userMessage = "Transaction Failed: The smart contract reverted (failed a require statement). **Are you sure your connected wallet is an authorized officer in the contract?**";
+                    userMessage += "Transaction rejected by user.";
+                } else if (error.message && error.message.includes("network does not support ENS")) {
+                    userMessage += "Error connecting to the network/chain. Check your RPC configuration.";
+                } else if (error.message && error.message.includes("The amount must be greater than zero.")) {
+                     userMessage += "The fine amount must be greater than zero.";
+                } else if (error.message && error.message.includes("violator cannot be the officer")) {
+                    userMessage += "The violator's address cannot be the same as the officer's address.";
                 } else {
-                    userMessage = error.message || "An unknown error occurred.";
+                    userMessage += "An unexpected error occurred. See console for details.";
                 }
 
-                status.textContent = "Transaction Failed. See console for full details.";
-                displayMessage(`Error: ${userMessage}`, true);
+                displayMessage(userMessage, true);
 
             } finally {
                 status.textContent = "";
+                updateSubmitButtonState(false, "Submit Violation");
                 walletConnectModal.classList.add("hidden");
-                updateSubmitButtonState(false); // Re-enable the button
             }
         });
 
-
-        // --- Wallet UI ---
+        // --- UI State Management ---
         function updateUIForConnectedState(address) {
-            officerWallet = address; // Set the global variable
-            walletShort.textContent = formatAddress(address);
+            connectWalletBtn.classList.add("hidden");
             profile.classList.remove("hidden");
             profile.classList.add("flex");
-            officerRole.classList.remove("hidden");
-            connectWalletBtn.classList.add("hidden");
-            status.textContent = ""; // Clear status when connected
+            walletShort.textContent = formatAddress(address);
+            officerWallet = address;
+            // Enable form when connected
+            violationForm.classList.remove("opacity-50", "pointer-events-none");
+            submitViolationBtn.disabled = false;
         }
 
         function updateUIForDisconnectedState() {
-            officerWallet = null;
-            sessionStorage.removeItem("walletAddress");
+            connectWalletBtn.classList.remove("hidden");
             profile.classList.add("hidden");
             profile.classList.remove("flex");
-            connectWalletBtn.classList.remove("hidden");
+            officerWallet = null;
+            // Disable form when disconnected
+            violationForm.classList.add("opacity-50", "pointer-events-none");
+            submitViolationBtn.disabled = true;
+            // Clear history display
             recentHistoryTableBody.innerHTML = `<tr><td colspan="6" class="text-center p-4 text-gray-500">Connect wallet to view history.</td></tr>`;
         }
 
-        function disconnectWallet() {
+        function handleDisconnect() {
+            sessionStorage.removeItem("walletAddress");
             updateUIForDisconnectedState();
             displayMessage("Wallet disconnected.");
         }
 
-        // --- Event Listeners ---
+        // --- Event Listeners and Initialization ---
         connectWalletBtn.addEventListener("click", connectContract);
-        disconnectWalletBtn.addEventListener("click", disconnectWallet);
+        disconnectWalletBtn.addEventListener("click", handleDisconnect);
 
-        window.onload = () => {
-            // Check for saved wallet address on load
-            const savedWallet = sessionStorage.getItem("walletAddress");
-            if (savedWallet) {
-                updateUIForConnectedState(savedWallet);
-                connectContract(); // Attempt to re-connect fully
+        // Listen for wallet and network changes
+        if (window.ethereum) {
+            // Re-run connection logic when accounts change
+            window.ethereum.on('accountsChanged', (accounts) => {
+                console.log("Accounts changed:", accounts);
+                if (accounts.length > 0) {
+                    connectContract(); // Attempt reconnection and re-initialization
+                } else {
+                    handleDisconnect();
+                }
+            });
+
+            // Re-run connection logic when network changes
+            window.ethereum.on('chainChanged', (chainId) => {
+                console.log("Chain changed:", chainId);
+                // Re-attempt connection to check network status
+                if (officerWallet) {
+                    connectContract(); 
+                }
+            });
+        }
+
+        // Initial check on load
+        window.addEventListener('load', () => {
+            const storedAddress = sessionStorage.getItem("walletAddress");
+            if (storedAddress && window.ethereum) {
+                // If address is stored, attempt silent reconnection
+                connectContract(); 
+            } else {
+                updateUIForDisconnectedState();
             }
-        };
+        });
+
     </script>
+    <div id="error-dialog"
+        class="hidden fixed inset-0 bg-red-900 bg-opacity-75 z-50 flex items-center justify-center p-4" role="alert"
+        aria-modal="true">
+        <div class="bg-white p-6 rounded-lg shadow-2xl max-w-sm w-full">
+            <h3 class="text-lg font-semibold text-red-700 mb-3 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.503-1.688 1.776-3.042l-6.928-13.06a1.996 1.996 0 00-3.552 0L3.3 17.958c-.727 1.354.236 3.042 1.776 3.042z" />
+                </svg>
+                System Error
+            </h3>
+            <p id="error-message" class="text-gray-600 mb-4 text-sm">An unknown error occurred.</p>
+            <button id="close-error-dialog"
+                class="w-full bg-red-500 text-white py-2 rounded-lg font-medium hover:bg-red-600 transition">
+                Close
+            </button>
+        </div>
+    </div>
 </body>
 
 </html>
